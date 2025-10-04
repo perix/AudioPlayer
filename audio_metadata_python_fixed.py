@@ -12,10 +12,10 @@ from PySide6.QtWidgets import (
 
 import vlc
 
-# Mutagen è opzionale
+# Mutagen is optional
 try:
     import mutagen
-except Exception:
+except ImportError:
     mutagen = None
 
 
@@ -33,18 +33,20 @@ class AudioPlayerVLCSilentMeta(QWidget):
         self.setWindowTitle("Audio Player (VLC backend, silent + metadata)")
         self.setMinimumSize(980, 520)
 
-        # VLC instance silenziosa con backend specifico per Qt
-        self.instance = vlc.Instance([
+        # Silent VLC instance with backend specific for Qt
+        vlc_args = [
             '--quiet',
             '--no-media-library',
             '--verbose=0',
-            '--no-xlib',  # Evita problemi di threading con X11
             '--vout=none',  # Disabilita output video
             '--aout=mmdevice',  # Usa Windows Audio Session API
             '--no-video-title-show',  # Evita creazione finestre
             '--no-stats',  # Disabilita statistiche che potrebbero creare finestre
             '--no-sub-autodetect-file'  # Disabilita rilevamento sottotitoli
-        ])
+        ]
+        if sys.platform.startswith("linux"):
+            vlc_args.insert(3, '--no-xlib')  # Solo su Linux/X11
+        self.instance = vlc.Instance(vlc_args)
         self.mediaplayer = self.instance.media_player_new()
         self.media = None
         self.user_seeking = False
@@ -206,7 +208,7 @@ class AudioPlayerVLCSilentMeta(QWidget):
             self.meta_dict["Data Modifica"] = datetime.fromtimestamp(
                 os.path.getmtime(path)
             ).strftime("%d/%m/%Y %H:%M:%S")
-        except Exception:
+        except (AttributeError, mutagen.MutagenError) if mutagen else AttributeError:
             pass
 
         # Mutagen (se disponibile) per info tecniche + tag
@@ -253,7 +255,7 @@ class AudioPlayerVLCSilentMeta(QWidget):
                                 if isinstance(val, list):
                                     val = val[0]
                                 self.meta_dict[disp] = str(val)
-            except Exception:
+            except (AttributeError, vlc.VLCException):
                 pass
 
         # Render parziale subito
@@ -304,7 +306,7 @@ class AudioPlayerVLCSilentMeta(QWidget):
             if d and (("Durata" not in self.meta_dict) or (d > 0)):
                 self.meta_dict["Durata"] = fmt_time(d)
                 changed = True
-        except Exception:
+        except vlc.VLCException:
             pass
 
         if changed:
